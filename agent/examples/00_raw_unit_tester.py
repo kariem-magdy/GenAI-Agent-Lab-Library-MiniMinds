@@ -6,6 +6,7 @@ Difference Between it And `01_raw_traced_unit_tester.py` no mlflow/langfuse
 """
 from tools.registry import ToolRegistry
 import tools.toolkit.web_explorer as web_explorer_tools
+from tools.toolkit.builtin import code_tools, file_tools, json_tools
 from llm.groq_client import GroqClient, LLMConfig
 from loguru import logger
 import json
@@ -16,7 +17,7 @@ from pathlib import Path
 # 1.1 setup llm client
 config = LLMConfig(
     max_tokens=5000,
-    model_name="openai/gpt-oss-120b",
+    model_name="llama-3.3-70b-versatile", # Ensure using a valid model
     reasoning_effort="medium",
     temperature=1.0,
     top_p=1
@@ -24,6 +25,9 @@ config = LLMConfig(
 client = GroqClient(config)
 
 # 1.2 setup path
+files_under_test = ["tools/toolkit/web_explorer.py"]
+tests_output_directory_path = "tools/llm_tests"
+
 messages = [
     {
         "role": "system", "content": """
@@ -47,11 +51,20 @@ messages = [
     }
 ]
 # TODO: 1.3 create tool register and add tools/modules you need
-raise NotImplementedError()
+registry = ToolRegistry()
+registry.register_from_module(web_explorer_tools)
+registry.register_from_module(code_tools)
+registry.register_from_module(file_tools)
+registry.register_from_module(json_tools)
+
 # TODO: 1.4 add tools to system_message use str.format method and  registery.to_string()
-raise NotImplementedError()
+messages[0]["content"] = messages[0]["content"].replace("{tools}", registry.to_string())
+
 # TODO: 1.5 set `files_under_test` and `tests_output_directory_path` in user_message like .format
-raise NotImplementedError()
+messages[1]["content"] = messages[1]["content"].format(
+    files_under_test=str(files_under_test),
+    tests_output_directory_path=str(tests_output_directory_path)
+)
 
 # ================ 2. Starts Iterations ================
 max_iterations = 20
@@ -59,16 +72,40 @@ iteration = 0
 while True:
     iteration += 1
     logger.info(f"Iteration {iteration}")
+    
     # TODO 2.1 call client (provide tools in .generate) with registery.to_openai_tools()
-    raise NotImplementedError()
+    # Note: Groq uses OpenAI-compatible tool format
+    client_tools = registry.to_client_tools(config.provider)
+    response = client.generate(messages, tools=client_tools)
+    
     # TODO 2.2 append assistant message (role, content, **tool_calls**) *log it logger.info*
-    raise NotImplementedError()
+    messages.append(response)
+    logger.info(f"Assistant Response: {response.get('content')}")
 
     # TODO get content and check if is finished
     # 2.3 Stop when one of the conditions happen
     # 2.3 'finished' in response['content'] -- handle response['content']=None case
     # 2.3 exceed max_iterations
-    raise NotImplementedError()
+    content = response.get("content") or ""
+    
+    if iteration > max_iterations:
+        logger.warning("Max iterations reached.")
+        break
+
+    if content:
+        # Simple heuristic or try/except JSON parse to find "finished": true
+        try:
+            # Attempt to parse json if the model output pure json or markdown json
+            clean_content = content.strip()
+            if clean_content.startswith("```"):
+                 clean_content = clean_content.split("\n", 1)[-1].rsplit("\n", 1)[0]
+            
+            data = json.loads(clean_content)
+            if data.get("finished") is True:
+                logger.success(f"Task Finished: {data.get('message')}")
+                break
+        except json.JSONDecodeError:
+            pass # Continue if not valid json or not finished
     
     # 2.4 execute any function execturion inside `tool_calls` || handle if it's None or not passed
     tool_calls = response.get("tool_calls", []) or []
@@ -77,27 +114,32 @@ while True:
             continue
         try:
             # TODO: extract func_name, args and call it -> set tool_message {content: result}
-            func_name = 'dummy'      
-            args_raw = 'dummy'
+            func_name = tool_call["function"]["name"]
+            args_raw = tool_call["function"]["arguments"]
+            
             if isinstance(args_raw, str):
                 func_inputs = json.loads(args_raw)
             else:
                 func_inputs = args_raw
-                
-            func_results = 'dummy'
+            
+            tool_instance = registry.get(func_name)
+            if tool_instance:
+                logger.debug(f"Executing tool {func_name}")
+                func_results = tool_instance(**func_inputs)
+            else:
+                func_results = f"Error: Tool {func_name} not found."
 
             tool_message = {
                 "role": "tool",
                 "tool_call_id": tool_call.get("id"),
-                "content": json.dumps(func_results),
+                "content": str(func_results), # Content must be string
             }
         except Exception as error:
             tool_message = {
                 "role": "tool",
                 "tool_call_id": tool_call.get("id"),
-                "content": json.dumps(error),
+                "content": f"Error executing tool: {str(error)}",
             }
             
         messages.append(tool_message)
         logger.info(f"tool response {json.dumps(tool_message, indent=2)}")
-        

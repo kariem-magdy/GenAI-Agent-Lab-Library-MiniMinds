@@ -1,6 +1,7 @@
 from tools.decorator import tool
 from pathlib import Path
 import subprocess
+import sys
 
 @tool()
 def run_python_file(file_path: str) -> dict:

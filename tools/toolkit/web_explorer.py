@@ -125,6 +125,6 @@ def end_browsing_page(session_id: str = "default") -> str:
     logger.debug(f"[end_browsing_page] session_id={session_id}")
     try:
         close_page(session_id)
-        return f"Closed browsing session '{session_id}'."
+        return "Page closed and session terminated."
     except Exception as e:
         return f"Failed to close session '{session_id}': {str(e)}"

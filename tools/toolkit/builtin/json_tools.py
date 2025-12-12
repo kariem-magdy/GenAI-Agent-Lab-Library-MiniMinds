@@ -14,7 +14,11 @@ def json_is_valid(s: str) -> bool:
     """
     #TODO: implement function with details and why llm need it ?
     # YOUR_ANSWER: ...
-    raise NotImplementedError()
+    try:
+        json.loads(s)
+        return True
+    except ValueError:
+        return False
 
 if __name__ == "__main__":
     print(json_is_valid.to_string())

@@ -46,9 +46,7 @@ class SimpleUnitTesterAgent(Agent):
 
 
         # TODO 2) Add assistant response use state.add_message
-        assistant_message = response["message"]
-        self.state.add_message(role="assistant", content=response.get("content"), tool_calls=response.get("tool_calls"))
-
+        state.add_message(role="assistant", content=response.get("content"), tool_calls=response.get("tool_calls"))
 
         # TODO 3) Set Stop condition
         content = response.get("content") or ""
